@@ -24,7 +24,12 @@ function folder() {
 
 function build(): AppDatabase {
   if (process.env.DATABASE_URL) {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    // Keep the pool tiny on serverless (Neon pooled URL). Local docker can use more.
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: process.env.VERCEL ? 1 : 10,
+      idleTimeoutMillis: process.env.VERCEL ? 5_000 : 30_000,
+    });
     globalForDb.driver = "postgres";
     return drizzlePg(pool, { schema });
   }

@@ -96,7 +96,9 @@ When live mode is enabled, short prompts (allowed character facts + the playerâ€
 
 Repository: [github.com/Lyowww/DetectiveGame](https://github.com/Lyowww/DetectiveGame)
 
-Production needs a real Postgres URL. On Vercel, PGlite (`.data/pglite`) is not durable across serverless instances.
+Production: [https://detectivegame-eta.vercel.app](https://detectivegame-eta.vercel.app)
+
+Production needs a real Postgres URL. On Vercel, PGlite (`.data/pglite`) is not durable across serverless instances. This project is linked to Vercel (`detectivegame`) with a Neon store (`casefile-db`) that injects `DATABASE_URL`.
 
 1. Import the GitHub repo in [Vercel](https://vercel.com/new) (or use the linked CLI project).
 2. Add a Neon (or other) Postgres store and set `DATABASE_URL` for Production / Preview / Development.
