@@ -37,19 +37,20 @@ export default function BriefingPage() {
     const chosen = langPref();
     setLang(chosen);
     setDaily(new URLSearchParams(window.location.search).get("challenge") === "daily");
-    ensureSession().then(async () => {
+    void fetch(`/api/cases?lang=${chosen}`)
+      .then((response) => response.json())
+      .then((cases) => setFile((cases.cases ?? []).find((item: CaseCard) => item.id === params.caseId) ?? null))
+      .catch(() => setFile(null));
+    void fetch("/api/status")
+      .then((response) => response.json())
+      .then((status) => setAi(Boolean(status.ai)))
+      .catch(() => setAi(false));
+    void ensureSession().then(async () => {
       const session = await authClient.getSession();
       const guest = Boolean((session.data?.user as { isAnonymous?: boolean } | undefined)?.isAnonymous);
       if (guest) {
         router.replace(`/auth?next=${encodeURIComponent(`/briefing/${params.caseId}${window.location.search}`)}`);
-        return;
       }
-      const [cases, status] = await Promise.all([
-        fetch(`/api/cases?lang=${chosen}`).then((response) => response.json()),
-        fetch("/api/status").then((response) => response.json()),
-      ]);
-      setFile((cases.cases ?? []).find((item: CaseCard) => item.id === params.caseId) ?? null);
-      setAi(Boolean(status.ai));
     });
   }, [params.caseId, router]);
 

@@ -7,6 +7,7 @@ export interface TelegramWebApp {
   isExpanded: boolean;
   ready: () => void;
   expand: () => void;
+  requestFullscreen?: () => void;
   isVersionAtLeast: (version: string) => boolean;
   setHeaderColor: (color: string) => void;
   setBackgroundColor: (color: string) => void;
@@ -46,18 +47,19 @@ export function applyTelegramChrome(app: TelegramWebApp) {
   root.dataset.tgScheme = app.colorScheme;
   const safe = app.safeAreaInset;
   const content = app.contentSafeAreaInset;
-  if (safe) {
-    root.style.setProperty("--tg-safe-area-inset-top", `${safe.top}px`);
-    root.style.setProperty("--tg-safe-area-inset-bottom", `${safe.bottom}px`);
-    root.style.setProperty("--tg-safe-area-inset-left", `${safe.left}px`);
-    root.style.setProperty("--tg-safe-area-inset-right", `${safe.right}px`);
-  }
-  if (content) {
-    root.style.setProperty("--tg-content-safe-area-inset-top", `${content.top}px`);
-    root.style.setProperty("--tg-content-safe-area-inset-bottom", `${content.bottom}px`);
-    root.style.setProperty("--tg-content-safe-area-inset-left", `${content.left}px`);
-    root.style.setProperty("--tg-content-safe-area-inset-right", `${content.right}px`);
-  }
+  const safeTop = Math.max(0, safe?.top ?? 0);
+  const contentTop = Math.max(0, content?.top ?? 0);
+  // Extra breathing room under Telegram's fullscreen chrome / status bar.
+  const topGap = Math.max(safeTop, contentTop, 0) + 16;
+  root.style.setProperty("--tg-safe-area-inset-top", `${safeTop}px`);
+  root.style.setProperty("--tg-safe-area-inset-bottom", `${Math.max(0, safe?.bottom ?? 0)}px`);
+  root.style.setProperty("--tg-safe-area-inset-left", `${Math.max(0, safe?.left ?? 0)}px`);
+  root.style.setProperty("--tg-safe-area-inset-right", `${Math.max(0, safe?.right ?? 0)}px`);
+  root.style.setProperty("--tg-content-safe-area-inset-top", `${contentTop}px`);
+  root.style.setProperty("--tg-content-safe-area-inset-bottom", `${Math.max(0, content?.bottom ?? 0)}px`);
+  root.style.setProperty("--tg-content-safe-area-inset-left", `${Math.max(0, content?.left ?? 0)}px`);
+  root.style.setProperty("--tg-content-safe-area-inset-right", `${Math.max(0, content?.right ?? 0)}px`);
+  root.style.setProperty("--tg-top-gap", `${topGap}px`);
   if (app.isVersionAtLeast("6.1")) {
     app.setHeaderColor("#12171b");
     app.setBackgroundColor("#12171b");

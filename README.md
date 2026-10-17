@@ -69,6 +69,28 @@ The archive ships **8 playable cases** with cover images and cast portraits unde
 
 The same desk opens in a browser and inside Telegram. Telegram sign-in checks the raw `initData` on the server with the bot token (HMAC-SHA256, key `WebAppData`). Data older than 24 hours is rejected. The browser never stores `initData`, and `initDataUnsafe` is not treated as identity.
 
+### Enable `/start` and Mini App sign-in on Vercel
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
+2. In the Vercel project → **Settings → Environment Variables**, set for Production (and Preview if needed):
+   - `TELEGRAM_BOT_TOKEN` — BotFather token
+   - `TELEGRAM_WEBHOOK_SECRET` — long random secret you invent
+   - `TELEGRAM_BOT_USERNAME` — bot username without `@` (optional but recommended)
+   - `APP_URL` — `https://detectivegame-eta.vercel.app` (or your custom domain)
+   - Keep `BETTER_AUTH_URL` equal to the same HTTPS origin
+3. Redeploy.
+4. Register webhook + menu button:
+
+```bash
+# with the same env values locally, or:
+curl -X POST "https://YOUR_APP/api/admin/telegram" \
+  -H "content-type: application/json" \
+  -H "x-casefile-admin: $OPENROUTER_ADMIN_TOKEN" \
+  -d '{"action":"setup"}'
+```
+
+5. In BotFather, set the Mini App / Web App URL to `APP_URL`. Open the bot and send `/start`.
+
 Launch values are only `home`, `case`, `case_tide-ledger`, `daily`, `ref_<code>`, and `link_<code>`. A run id in that value opens nothing private.
 
 ```bash

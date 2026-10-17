@@ -439,13 +439,29 @@ textarea.field { min-height: 5.5rem; resize: vertical; }
   display: grid; place-items: center; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
 .mobile-nav { display: none; }
-html[data-telegram] .desk {
-  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+html[data-telegram] {
+  --tg-top-gap: 16px;
+}
+html[data-telegram] body {
   padding-left: var(--tg-safe-area-inset-left, 0px);
   padding-right: var(--tg-safe-area-inset-right, 0px);
 }
+html[data-telegram] .site-header,
+html[data-telegram] .desk-header,
+html[data-telegram] .library,
+html[data-telegram] .page,
+html[data-telegram] .banner {
+  padding-top: calc(var(--tg-top-gap, 16px) + 0.35rem);
+}
+html[data-telegram] .desk {
+  padding-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
 html[data-telegram] .composer { margin-bottom: var(--keyboard-inset, 0px); }
-html[data-telegram] .mobile-nav { padding-bottom: var(--tg-content-safe-area-inset-bottom, 0px); }
+html[data-telegram] .mobile-nav {
+  padding-bottom: max(var(--tg-content-safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
+}
 html[data-telegram] .btn, html[data-telegram] .mobile-nav button, html[data-telegram] .entity-card { min-height: 44px; }
 
 .portrait, .portrait img, .interview-portrait, .person-chip img {

@@ -22,12 +22,18 @@ export function TelegramBoot() {
     if (app) {
       applyTelegramChrome(app);
       app.expand();
+      try {
+        app.requestFullscreen?.();
+      } catch {
+        /* older clients */
+      }
       app.ready();
       const refresh = () => applyTelegramChrome(app);
       app.onEvent("themeChanged", refresh);
       app.onEvent("viewportChanged", refresh);
       app.onEvent("safeAreaChanged", refresh);
       app.onEvent("contentSafeAreaChanged", refresh);
+      app.onEvent("fullscreenChanged", refresh);
       app.onEvent("activated", () => window.dispatchEvent(new Event("cf-resume")));
       if (app.isVersionAtLeast("7.0") && app.SettingsButton) {
         app.SettingsButton.show();
@@ -43,21 +49,22 @@ export function TelegramBoot() {
       fetch("/api/telegram/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ initData }),
       })
         .then(async (response) => {
-          const data = await response.json();
+          const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            setNotice(data.error ?? "Telegram sign-in was rejected.");
+            setNotice(typeof data.error === "string" ? data.error : "Telegram sign-in was rejected.");
             return;
           }
           if (data.notice) setNotice(data.notice);
-          const profile = await fetch("/api/profile").then((item) => item.json()).catch(() => null);
+          const profile = await fetch("/api/profile", { credentials: "include" }).then((item) => item.json()).catch(() => null);
           const needsIntro = !localStorage.getItem("cf-introduced") || profile?.profile?.displayName === "Detective";
           if (needsIntro) setIntro(true);
           else if (data.path && data.path !== window.location.pathname + window.location.search) router.replace(data.path);
         })
-        .catch(() => setNotice("Telegram sign-in did not complete. You can still read the archive."));
+        .catch(() => setNotice("Telegram sign-in did not complete. You can still browse the archive in the browser."));
     } else {
       fetch("/api/telegram/config")
         .then((response) => response.json())
@@ -73,6 +80,7 @@ export function TelegramBoot() {
     const response = await fetch("/api/telegram/session", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ dev: true, telegramUserId: "10001" }),
     });
     if (!response.ok) return;
@@ -105,7 +113,12 @@ export function TelegramBoot() {
               const name = (document.getElementById("tg-display-name") as HTMLInputElement | null)?.value.trim() || "Detective";
               const accepted = (document.getElementById("tg-terms") as HTMLInputElement | null)?.checked;
               if (!accepted) { setNotice("Accept the terms to continue."); return; }
-              fetch("/api/profile", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: name }) });
+              fetch("/api/profile", {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ displayName: name }),
+              });
               localStorage.setItem("cf-introduced", "1");
               setIntro(false);
               router.push("/library");

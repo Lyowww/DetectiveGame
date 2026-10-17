@@ -33,20 +33,20 @@ export default function HomePage() {
     const chosen = langPref();
     setLang(chosen);
     document.documentElement.lang = chosen;
-    ensureSession()
-      .then(() =>
-        Promise.all([
-          fetch("/api/runs").then((response) => response.json()),
-          fetch(`/api/cases?lang=${chosen}`).then((response) => response.json()),
-          authClient.getSession(),
-        ]),
-      )
-      .then(([runData, caseData, session]) => {
+    void fetch(`/api/cases?lang=${chosen}`)
+      .then((response) => response.json())
+      .then((caseData) => setFeatured((caseData.cases ?? [])[0] ?? null))
+      .catch(() => setFeatured(null));
+    void ensureSession()
+      .then(() => Promise.all([fetch("/api/runs").then((response) => response.json()), authClient.getSession()]))
+      .then(([runData, session]) => {
         setRuns(runData.runs ?? []);
-        setFeatured((caseData.cases ?? [])[0] ?? null);
         setGuest(Boolean((session.data?.user as { isAnonymous?: boolean } | undefined)?.isAnonymous ?? runData.guest));
       })
-      .catch(() => setRuns([]));
+      .catch(() => {
+        setRuns([]);
+        setGuest(true);
+      });
   }, []);
 
   const active = runs.find((run) => run.status === "active");

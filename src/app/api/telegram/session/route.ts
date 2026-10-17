@@ -17,10 +17,12 @@ const bodySchema = z.object({
 });
 
 function cookie(response: NextResponse, issued: { name: string; value: string; maxAge: number }) {
+  // Telegram Mini Apps run in a third-party WebView — Lax cookies often never stick.
+  const secure = issued.name.startsWith("__Secure-") || process.env.NODE_ENV === "production";
   response.cookies.set(issued.name, issued.value, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: issued.name.startsWith("__Secure-"),
+    sameSite: secure ? "none" : "lax",
+    secure,
     path: "/",
     maxAge: issued.maxAge,
   });
@@ -43,9 +45,25 @@ export async function POST(request: Request) {
   }
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token || !parsed.data.initData) return NextResponse.json({ error: "Telegram sign-in is not configured." }, { status: 503 });
+  if (!token) {
+    return NextResponse.json({
+      error: "Telegram sign-in is not configured. Set TELEGRAM_BOT_TOKEN (and TELEGRAM_WEBHOOK_SECRET) in Vercel environment variables, then redeploy.",
+      code: "telegram_not_configured",
+    }, { status: 503 });
+  }
+  if (!parsed.data.initData) {
+    return NextResponse.json({
+      error: "Open CASEFILE from the Telegram bot or menu button so Telegram can pass a signed session.",
+      code: "missing_init_data",
+    }, { status: 400 });
+  }
   const verified = verifyInitData(parsed.data.initData, token);
-  if (!verified.ok) return NextResponse.json({ error: "Telegram sign-in was rejected." }, { status: 401 });
+  if (!verified.ok) {
+    return NextResponse.json({
+      error: "Telegram sign-in was rejected. Check that TELEGRAM_BOT_TOKEN matches the bot that opened this Mini App.",
+      code: "invalid_init_data",
+    }, { status: 401 });
+  }
 
   const launch = parseLaunch(verified.data.startParam);
   const linkCode = parsed.data.linkCode || (launch.kind === "link" ? launch.code : "");

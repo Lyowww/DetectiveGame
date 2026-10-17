@@ -31,19 +31,18 @@ export default function LibraryPage() {
   useEffect(() => {
     const chosen = langPref();
     setLang(chosen);
-    ensureSession()
-      .then(() =>
-        Promise.all([
-          fetch(`/api/cases?lang=${chosen}`).then((response) => response.json()),
-          fetch("/api/runs").then((response) => response.json()),
-          authClient.getSession(),
-        ]),
-      )
-      .then(([caseData, runData, session]) => {
-        setCases(caseData.cases ?? []);
+    // Cases are authored catalog data — load them even if auth/DB is temporarily unavailable.
+    void fetch(`/api/cases?lang=${chosen}`)
+      .then((response) => response.json())
+      .then((caseData) => setCases(caseData.cases ?? []))
+      .catch(() => setCases([]));
+    void ensureSession()
+      .then(() => Promise.all([fetch("/api/runs").then((response) => response.json()), authClient.getSession()]))
+      .then(([runData, session]) => {
         setRuns(runData.runs ?? []);
         setGuest(Boolean((session.data?.user as { isAnonymous?: boolean } | undefined)?.isAnonymous ?? runData.guest));
-      });
+      })
+      .catch(() => setGuest(true));
   }, []);
 
   const active = runs.find((run) => run.status === "active");

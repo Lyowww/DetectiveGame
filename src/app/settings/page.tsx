@@ -9,12 +9,21 @@ import { t, type Lang } from "@/lib/i18n";
 export default function SettingsPage() {
   const [lang, setLang] = useState<Lang>("en");
   const [status, setStatus] = useState<{ ai: boolean; speech: boolean; tts: boolean; database: string } | null>(null);
+  const [telegram, setTelegram] = useState<{ configured: boolean; username: string; appUrl: string } | null>(null);
   const [notify, setNotify] = useState<boolean | null>(null);
 
   useEffect(() => {
     setLang(langPref());
-    ensureSession().then(() => fetch("/api/status")).then((response) => response.json()).then(setStatus);
-    fetch("/api/profile").then(async (response) => {
+    void ensureSession()
+      .then(() => fetch("/api/status"))
+      .then((response) => response?.json())
+      .then(setStatus)
+      .catch(() => setStatus(null));
+    void fetch("/api/telegram/config")
+      .then((response) => response.json())
+      .then((data) => setTelegram({ configured: Boolean(data.configured), username: data.username ?? "", appUrl: data.appUrl ?? "" }))
+      .catch(() => setTelegram(null));
+    void fetch("/api/profile").then(async (response) => {
       if (!response.ok) return;
       const data = await response.json();
       if (data.user?.telegram) setNotify(Boolean(data.user.notify));
@@ -117,12 +126,46 @@ export default function SettingsPage() {
         </section>
         <section className="paper doc">
           <h2>{lang === "hy" ? "Ծառայություններ" : "Services"}</h2>
-          <p>{status?.ai ? t(lang, "live") : t(lang, "demo")}. {lang === "hy" ? "Տվյալների շտեմարան" : "Database"}: {status?.database}.</p>
+          <p>{status?.ai ? t(lang, "live") : t(lang, "demo")}. {lang === "hy" ? "Տվյալների շտեմարան" : "Database"}: {status?.database ?? "…"}.</p>
           <p>{status?.speech ? (lang === "hy" ? "Տառադարձումը կարգավորված է։" : "Transcription is configured.") : t(lang, "speechOff")}</p>
           <p>{status?.tts ? (lang === "hy" ? "Խոսքը կարգավորված է։ Սրանք հորինված ձայներ են։" : "Speech is configured. The voices are fictional.") : t(lang, "audioOff")}</p>
           <p>{lang === "hy"
             ? "Ձայնագրությունները չեն պահվում։ Ֆայլը մնում է հիշողության մեջ միայն հարցման ընթացքում։ Պահվում է միայն այն տեքստը, որ դուք հաստատում եք։"
             : "Recordings are not retained. Audio stays in memory only for the request. Only a transcript you confirm is saved."}</p>
+        </section>
+        <section className="paper doc">
+          <h2>Telegram</h2>
+          {telegram?.configured ? (
+            <p>
+              {lang === "hy" ? "Բոտը կարգավորված է։" : "Bot token is configured."}
+              {telegram.username ? ` @${telegram.username}` : ""}
+              {telegram.appUrl ? ` · ${telegram.appUrl}` : ""}
+            </p>
+          ) : (
+            <p className="quiet">
+              {lang === "hy"
+                ? "/start և Mini App մուտքի համար Vercel-ում ավելացրեք TELEGRAM_BOT_TOKEN և TELEGRAM_WEBHOOK_SECRET, ապա վերագործարկեք։"
+                : "For /start and Mini App sign-in, add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Environment Variables, then redeploy."}
+            </p>
+          )}
+          <ol className="quiet" style={{ paddingLeft: "1.2rem", display: "grid", gap: "0.35rem" }}>
+            <li>{lang === "hy" ? "Ստեղծեք բոտ @BotFather-ում և պատճենեք token-ը։" : "Create a bot with @BotFather and copy the token."}</li>
+            <li>
+              {lang === "hy" ? "Vercel → Settings → Environment Variables." : "Vercel → Settings → Environment Variables."}
+              {" "}
+              <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_WEBHOOK_SECRET</code>, optional <code>TELEGRAM_BOT_USERNAME</code>
+            </li>
+            <li>
+              {lang === "hy" ? "Կարգավորեք webhook-ը." : "Register the webhook:"}
+              {" "}
+              <code>npm run telegram:setup</code>
+              {" "}
+              {lang === "hy" ? "կամ" : "or"}
+              {" "}
+              <code>POST /api/admin/telegram</code> {"{ \"action\": \"setup\" }"}
+            </li>
+            <li>{lang === "hy" ? "BotFather-ում Mini App URL-ը դրեք APP_URL-ին։" : "In BotFather, set the Mini App URL to APP_URL."}</li>
+          </ol>
         </section>
       </main>
     </>

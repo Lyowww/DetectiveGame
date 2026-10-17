@@ -14,6 +14,7 @@ export type AppDatabase = PgliteDatabase<typeof schema> | NodePgDatabase<typeof 
 
 const globalForDb = globalThis as unknown as {
   db?: AppDatabase;
+  pool?: Pool;
   ready?: Promise<void>;
   driver?: "postgres" | "pglite";
 };
@@ -22,14 +23,46 @@ function folder() {
   return path.join(process.cwd(), "drizzle");
 }
 
+function withSslCompat(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("sslmode")) parsed.searchParams.set("sslmode", "require");
+    if (!parsed.searchParams.has("uselibpqcompat")) parsed.searchParams.set("uselibpqcompat", "true");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function postgresUrl(preferDirect = false) {
+  const direct = process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING || "";
+  const pooled = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+  const chosen = preferDirect ? direct || pooled : pooled || direct;
+  return chosen ? withSslCompat(chosen) : "";
+}
+
+function buildPool(connectionString: string) {
+  const serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const pool = new Pool({
+    connectionString,
+    max: serverless ? 1 : 10,
+    idleTimeoutMillis: serverless ? 5_000 : 30_000,
+    connectionTimeoutMillis: 15_000,
+    ssl: connectionString.includes("sslmode=disable") ? undefined : { rejectUnauthorized: false },
+  });
+  if (serverless) {
+    void import("@vercel/functions")
+      .then(({ attachDatabasePool }) => attachDatabasePool(pool))
+      .catch(() => undefined);
+  }
+  return pool;
+}
+
 function build(): AppDatabase {
-  if (process.env.DATABASE_URL) {
-    // Keep the pool tiny on serverless (Neon pooled URL). Local docker can use more.
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: process.env.VERCEL ? 1 : 10,
-      idleTimeoutMillis: process.env.VERCEL ? 5_000 : 30_000,
-    });
+  const connectionString = postgresUrl(false);
+  if (connectionString) {
+    const pool = buildPool(connectionString);
+    globalForDb.pool = pool;
     globalForDb.driver = "postgres";
     return drizzlePg(pool, { schema });
   }
@@ -58,11 +91,34 @@ export function databaseDriver() {
   return globalForDb.driver ?? "pglite";
 }
 
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function migratePostgresWithRetry() {
+  const direct = postgresUrl(true);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const pool = buildPool(direct);
+    try {
+      const migrator = drizzlePg(pool, { schema });
+      await migratePg(migrator, { migrationsFolder: folder() });
+      await pool.end().catch(() => undefined);
+      return;
+    } catch (error) {
+      lastError = error;
+      await pool.end().catch(() => undefined);
+      await sleep(250 * attempt * attempt);
+    }
+  }
+  throw lastError;
+}
+
 export async function ensureDb() {
   getDb();
   if (!globalForDb.ready) {
     globalForDb.ready = (async () => {
-      if (globalForDb.driver === "postgres") await migratePg(db as NodePgDatabase<typeof schema>, { migrationsFolder: folder() });
+      if (globalForDb.driver === "postgres") await migratePostgresWithRetry();
       else await migratePglite(db as PgliteDatabase<typeof schema>, { migrationsFolder: folder() });
     })().catch((error) => {
       globalForDb.ready = undefined;

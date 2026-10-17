@@ -18,9 +18,25 @@ export function authSecret() {
   return value;
 }
 
+function trustedOrigins() {
+  const origins = new Set<string>();
+  for (const value of [process.env.BETTER_AUTH_URL, process.env.APP_URL]) {
+    if (!value) continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      /* ignore bad env */
+    }
+  }
+  if (process.env.VERCEL_URL) origins.add(`https://${process.env.VERCEL_URL}`);
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) origins.add(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`);
+  return [...origins];
+}
+
 export const auth = betterAuth({
   secret: authSecret(),
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? "http://localhost:3000",
+  trustedOrigins: trustedOrigins(),
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: authSchema,
