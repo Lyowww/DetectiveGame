@@ -92,6 +92,35 @@ Deleting an account removes its investigations, notes, and public ranking rows.
 
 When live mode is enabled, short prompts (allowed character facts + the player’s line) are sent to OpenRouter and then to the selected free upstream model. Full secret reconstructions are not included in those prompts. Do not log complete conversations by default. Provider data handling is governed by OpenRouter’s terms and the upstream model provider.
 
+## Deploy (Vercel + GitHub)
+
+Repository: [github.com/Lyowww/DetectiveGame](https://github.com/Lyowww/DetectiveGame)
+
+Production needs a real Postgres URL. On Vercel, PGlite (`.data/pglite`) is not durable across serverless instances.
+
+1. Import the GitHub repo in [Vercel](https://vercel.com/new) (or use the linked CLI project).
+2. Add a Neon (or other) Postgres store and set `DATABASE_URL` for Production / Preview / Development.
+3. Set at least:
+
+| Variable | Notes |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Long random secret (required in production) |
+| `BETTER_AUTH_URL` | Production origin, e.g. `https://your-app.vercel.app` |
+| `APP_URL` | Same HTTPS origin (Telegram / absolute links) |
+| `OPENROUTER_API_KEY` | Optional; free-only dialogue when set |
+| `OPENROUTER_FREE_ONLY` | `true` |
+| `OPENROUTER_PRIMARY_MODEL` | `openrouter/free` |
+| `OPENROUTER_ADMIN_TOKEN` | Optional; protects `/admin/openrouter` |
+
+4. Redeploy after env changes. Copy values from `.env.example`; never commit real secrets.
+
+```bash
+vercel link --yes --project detectivegame
+vercel git connect https://github.com/Lyowww/DetectiveGame.git
+vercel env pull   # optional local sync
+vercel --prod
+```
+
 ## Verification
 
 ```bash
