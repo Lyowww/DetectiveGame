@@ -41,7 +41,7 @@ export function EvidenceView({
           ))}
         </ul>
       ) : null}
-      <p className="quiet" style={{ color: "#5c564c" }}>{item.source}</p>
+      <p className="quiet" style={{ color: "var(--paper-muted)" }}>{item.source}</p>
       {item.type === "camera" && item.frames ? <ContactSheet frames={item.frames} lang={lang} /> : null}
       {item.type === "audio" ? <Wave lang={lang} /> : null}
       {item.type === "map" ? <Plan lang={lang} /> : null}
@@ -61,7 +61,7 @@ export function EvidenceView({
           ))}
         </ul>
       ) : null}
-      <button className="text-btn" type="button" onClick={() => setOpen((value) => !value)}>
+      <button className="btn ghost" type="button" onClick={() => setOpen((value) => !value)}>
         {open ? t(lang, "hideDetails") : t(lang, "details")}
       </button>
       {open ? (
@@ -76,22 +76,22 @@ export function EvidenceView({
           ) : null}
         </>
       ) : null}
-      <div className="actions">
-        <button className="btn" type="button" onClick={onSave} aria-label={t(lang, "saveNote")}>
+      <div className="evidence-actions">
+        <button className="btn solid" type="button" onClick={onSave} aria-label={t(lang, "saveNote")}>
           <Bookmark {...iconProps} /> {t(lang, "saveNote")}
         </button>
         <button className="btn" type="button" onClick={onCompare} aria-label={t(lang, "compare")}>
           <GitCompareArrows {...iconProps} /> {t(lang, "compare")}
         </button>
-        <button className="btn" type="button" onClick={onPin} aria-label={t(lang, "pin")}>
-          <Pin {...iconProps} /> {t(lang, "pin")}
-        </button>
-        {onPresent ? (
-          <button className="btn solid" type="button" onClick={onPresent}>{t(lang, "present")}</button>
-        ) : null}
         {onAskAbout ? (
           <button className="btn" type="button" onClick={onAskAbout}>{t(lang, "askAbout")}</button>
         ) : null}
+        {onPresent ? (
+          <button className="btn" type="button" onClick={onPresent}>{t(lang, "present")}</button>
+        ) : null}
+        <button className="btn ghost" type="button" onClick={onPin} aria-label={t(lang, "pin")}>
+          <Pin {...iconProps} /> {t(lang, "pin")}
+        </button>
       </div>
     </article>
   );

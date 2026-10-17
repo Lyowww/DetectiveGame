@@ -18,7 +18,7 @@ export function SiteHeader({ lang }: { lang: Lang }) {
   }, [path]);
 
   const item = (href: string, label: string) => (
-    <Link href={href} aria-current={path === href ? "page" : undefined}>{label}</Link>
+    <Link href={href} className="btn ghost" aria-current={path === href ? "page" : undefined}>{label}</Link>
   );
 
   return (

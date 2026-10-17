@@ -42,12 +42,14 @@ export function BoardCanvas({
   );
 
   return (
-    <div style={{ height: 520, border: "1px solid var(--line)" }}>
+    <div className="board-shell" aria-label="Connection board">
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         onNodeDragStop={(_event, node) => onMove(node.id, node.position.x, node.position.y)}
         fitView
+        preventScrolling
+        proOptions={{ hideAttribution: true }}
       >
         <Background />
         <Controls />

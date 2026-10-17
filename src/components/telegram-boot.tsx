@@ -12,13 +12,6 @@ export function TelegramBoot() {
 
   useEffect(() => {
     const app = webApp();
-    let removeKeyboard = () => {};
-    const onViewport = () => {
-      const view = window.visualViewport;
-      if (!view) return;
-      const inset = Math.max(0, window.innerHeight - view.height - view.offsetTop);
-      document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`);
-    };
     if (app) {
       applyTelegramChrome(app);
       app.expand();
@@ -39,12 +32,6 @@ export function TelegramBoot() {
         app.SettingsButton.show();
         app.SettingsButton.onClick(() => router.push("/settings"));
       }
-      window.visualViewport?.addEventListener("resize", onViewport);
-      window.visualViewport?.addEventListener("scroll", onViewport);
-      removeKeyboard = () => {
-        window.visualViewport?.removeEventListener("resize", onViewport);
-        window.visualViewport?.removeEventListener("scroll", onViewport);
-      };
       const initData = app.initData;
       fetch("/api/telegram/session", {
         method: "POST",
@@ -71,9 +58,6 @@ export function TelegramBoot() {
         .then((data) => setDevMock(Boolean(data.devMock)))
         .catch(() => setDevMock(false));
     }
-    return () => {
-      removeKeyboard();
-    };
   }, [router]);
 
   async function signInWithDevMock() {

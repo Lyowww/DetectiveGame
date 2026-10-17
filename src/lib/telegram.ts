@@ -41,6 +41,27 @@ export function inTelegram() {
   return webApp() !== null;
 }
 
+function readableHex(value: string | undefined, fallback: string) {
+  if (!value || !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return fallback;
+  return value.length === 4
+    ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
+    : value;
+}
+
+function luminance(hex: string) {
+  const raw = hex.replace("#", "");
+  const n = (i: number) => Number.parseInt(raw.slice(i, i + 2), 16) / 255;
+  const channel = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * channel(n(0)) + 0.7152 * channel(n(2)) + 0.0722 * channel(n(4));
+}
+
+function contrastOk(fg: string, bg: string) {
+  const a = luminance(fg);
+  const b = luminance(bg);
+  const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  return ratio >= 4.5;
+}
+
 export function applyTelegramChrome(app: TelegramWebApp) {
   const root = document.documentElement;
   root.dataset.telegram = "1";
@@ -60,6 +81,35 @@ export function applyTelegramChrome(app: TelegramWebApp) {
   root.style.setProperty("--tg-content-safe-area-inset-left", `${Math.max(0, content?.left ?? 0)}px`);
   root.style.setProperty("--tg-content-safe-area-inset-right", `${Math.max(0, content?.right ?? 0)}px`);
   root.style.setProperty("--tg-top-gap", `${topGap}px`);
+
+  const theme = app.themeParams ?? {};
+  const page = readableHex(theme.bg_color, "#0e1114");
+  const surface = readableHex(theme.secondary_bg_color, "#1c232a");
+  const text = readableHex(theme.text_color, "#f3efe6");
+  const hint = readableHex(theme.hint_color, "#c9c2b5");
+  const button = readableHex(theme.button_color, "#d4a35c");
+  const buttonText = readableHex(theme.button_text_color, "#1b140c");
+  // Only adopt host colors when contrast stays readable; otherwise keep CASEFILE tokens.
+  if (contrastOk(text, page)) {
+    root.style.setProperty("--bg-page", page);
+    root.style.setProperty("--ink", page);
+    root.style.setProperty("--text-primary", text);
+    root.style.setProperty("--text", text);
+  }
+  if (contrastOk(text, surface)) {
+    root.style.setProperty("--bg-surface", surface);
+    root.style.setProperty("--panel", surface);
+  }
+  if (contrastOk(hint, page)) {
+    root.style.setProperty("--text-secondary", hint);
+    root.style.setProperty("--muted", hint);
+  }
+  if (contrastOk(buttonText, button)) {
+    root.style.setProperty("--action-primary-bg", button);
+    root.style.setProperty("--action-primary-fg", buttonText);
+    root.style.setProperty("--amber", button);
+  }
+
   if (app.isVersionAtLeast("6.1")) {
     app.setHeaderColor("#12171b");
     app.setBackgroundColor("#12171b");

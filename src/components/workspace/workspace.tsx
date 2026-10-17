@@ -21,9 +21,9 @@ import {
   Settings,
   Target,
   UserRound,
-  X,
   iconProps,
 } from "@/components/ui/icons";
+import { Modal } from "@/components/ui/modal";
 import { EvidenceTypeIcon } from "@/components/workspace/evidence-icons";
 import { EvidenceView } from "@/components/workspace/evidence-view";
 import { ensureSession } from "@/lib/auth-client";
@@ -125,6 +125,8 @@ export function Workspace({ runId }: { runId: string }) {
     evidenceIds: [] as string[],
   });
   const [solveStep, setSolveStep] = useState(0);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const lang: Lang = run?.language ?? "en";
 
@@ -208,37 +210,43 @@ export function Workspace({ runId }: { runId: string }) {
   }, [note]);
 
   async function post(action: Action) {
+    if (submitting) return { ok: false } as Result;
+    setSubmitting(true);
     setSaving("saving");
     setNotice("");
     setNoticeOk(false);
-    const response = await fetch(`/api/runs/${runId}/action`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), action }),
-    });
-    const data = (await response.json()) as Result;
-    if (data.run) setRun(data.run);
-    setAlternatives(data.alternatives ?? []);
-    setConfirm(data.confirm ?? null);
-    setHint(data.hintPreview ?? null);
-    if (data.compare) {
-      setCompare(data.compare);
-      setDest("evidence");
-      setEvidenceTool("compare");
-      setEvidenceId(null);
-    }
-    if (!response.ok || data.ok === false) {
-      setNotice(data.notices?.join(" ") || data.error || t(lang, "errorGeneric"));
-      setSaving(response.ok ? "saved" : "error");
-    } else {
-      setNotice(data.notices?.join(" ") ?? "");
-      setSaving("saved");
-      if (data.run?.ttsConfigured && localStorage.getItem("cf-autoplay") === "on") {
-        const last = [...(data.run.messages ?? [])].reverse().find((message) => message.role === "character");
-        if (last) void speak(last.text, last.characterId);
+    try {
+      const response = await fetch(`/api/runs/${runId}/action`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), action }),
+      });
+      const data = (await response.json()) as Result;
+      if (data.run) setRun(data.run);
+      setAlternatives(data.alternatives ?? []);
+      setConfirm(data.confirm ?? null);
+      setHint(data.hintPreview ?? null);
+      if (data.compare) {
+        setCompare(data.compare);
+        setDest("evidence");
+        setEvidenceTool("compare");
+        setEvidenceId(null);
       }
+      if (!response.ok || data.ok === false) {
+        setNotice(data.notices?.join(" ") || data.error || t(lang, "errorGeneric"));
+        setSaving(response.ok ? "saved" : "error");
+      } else {
+        setNotice(data.notices?.join(" ") ?? "");
+        setSaving("saved");
+        if (data.run?.ttsConfigured && localStorage.getItem("cf-autoplay") === "on") {
+          const last = [...(data.run.messages ?? [])].reverse().find((message) => message.role === "character");
+          if (last) void speak(last.text, last.characterId);
+        }
+      }
+      return data;
+    } finally {
+      setSubmitting(false);
     }
-    return data;
   }
 
   function openPerson(id: string) {
@@ -433,9 +441,17 @@ export function Workspace({ runId }: { runId: string }) {
             : tutorial === "compare"
               ? t(lang, "tutorialCompare")
               : "";
+  const tipRelevant =
+    Boolean(tipText) &&
+    ((tutorial === "interview" && dest === "investigate" && !personId) ||
+      (tutorial === "ask" && Boolean(personId)) ||
+      (tutorial === "save" && Boolean(personId)) ||
+      (tutorial === "evidence" && dest === "evidence" && !evidenceId) ||
+      (tutorial === "compare" && dest === "evidence"));
+  const panel = personId ? "interview" : dest;
 
   return (
-    <div className="desk">
+    <div className="desk" data-panel={panel} data-tip={guided && tipRelevant ? "open" : undefined}>
       <header className="desk-header">
         <div className="desk-title">
           <Link href="/library" className="text-btn" aria-label={t(lang, "back")}>
@@ -485,7 +501,7 @@ export function Workspace({ runId }: { runId: string }) {
             <Target {...iconProps} size={16} />
             {run.objectives.main}
           </span>
-          {(leads[0] || run.firstLead) ? (
+          {(leads[0] || run.firstLead) && !(dest === "investigate" && !personId) ? (
             <span className="obj-lead">
               <Lightbulb {...iconProps} size={16} />
               {leads[0] || run.firstLead}
@@ -494,7 +510,7 @@ export function Workspace({ runId }: { runId: string }) {
           <div className="progress-pills">
             <span className="chip">{run.progress.evidenceFound} {t(lang, "evidence").toLowerCase()}</span>
             <span className="chip">{run.progress.interviewsDone} {t(lang, "people").toLowerCase()}</span>
-            <button className="text-btn" type="button" onClick={() => setGuided(false)}>{t(lang, "collapseGuide")}</button>
+            <button className="btn ghost guide-toggle" type="button" onClick={() => setGuided(false)}>{t(lang, "collapseGuide")}</button>
           </div>
         </div>
       ) : (
@@ -503,7 +519,7 @@ export function Workspace({ runId }: { runId: string }) {
             <Target {...iconProps} size={16} />
             {run.objectives.main}
           </span>
-          <button className="text-btn" type="button" onClick={() => setGuided(true)} style={{ marginLeft: "auto" }}>
+          <button className="btn ghost guide-toggle" type="button" onClick={() => setGuided(true)} style={{ marginLeft: "auto" }}>
             {t(lang, "expandGuide")}
           </button>
         </div>
@@ -543,6 +559,44 @@ export function Workspace({ runId }: { runId: string }) {
 
         {dest === "investigate" && !personId ? (
           <section>
+            {(leads[0] || run.firstLead) ? (
+              <div className="hub-cta">
+                <p>
+                  <strong>{t(lang, "lead")}:</strong> {leads[0] || run.firstLead}
+                </p>
+                {(() => {
+                  const nextPerson = run.characters.find((item) => item.available && !item.interviewed)
+                    ?? run.characters.find((item) => item.followUpAvailable);
+                  if (nextPerson) {
+                    return (
+                      <button className="btn solid" type="button" onClick={() => openPerson(nextPerson.id)}>
+                        {t(lang, "interview")}
+                      </button>
+                    );
+                  }
+                  const here = run.locations.find((item) => item.id === run.locationId);
+                  if (here) {
+                    return (
+                      <button
+                        className="btn solid"
+                        type="button"
+                        onClick={() => {
+                          setPlaceFocus(here.id);
+                          document.getElementById("place-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                      >
+                        {t(lang, "inspect")}
+                      </button>
+                    );
+                  }
+                  return (
+                    <button className="btn solid" type="button" onClick={() => goDest("evidence")}>
+                      {t(lang, "evidence")}
+                    </button>
+                  );
+                })()}
+              </div>
+            ) : null}
             <div className="hub-section">
               <h2>{t(lang, "people")}</h2>
               <div className="person-grid">
@@ -554,7 +608,7 @@ export function Workspace({ runId }: { runId: string }) {
                       <strong>{item.name}</strong>
                       <p className="role">{item.role}</p>
                       <span className="entity-actions">
-                        <span className="chip">
+                        <span className="chip amber">
                           <UserRound {...iconProps} size={14} />
                           {t(lang, "interview")}
                         </span>
@@ -595,7 +649,7 @@ export function Workspace({ runId }: { runId: string }) {
                         <strong>{item.name}</strong>
                         <p className="role">{item.blurb}</p>
                         <span className="entity-actions">
-                          <span className="chip">
+                          <span className="chip amber">
                             <MapPin {...iconProps} size={14} />
                             {t(lang, "inspect")}
                           </span>
@@ -608,7 +662,7 @@ export function Workspace({ runId }: { runId: string }) {
               </div>
             </div>
             {place ? (
-              <section className="place-detail hub-section">
+              <section id="place-detail" className="place-detail hub-section">
                 <h2>{place.name}</h2>
                 <div className="region-list">
                   {place.regions.map((region) => (
@@ -627,7 +681,7 @@ export function Workspace({ runId }: { runId: string }) {
                         <strong>{region.label}</strong>
                         <span style={{ display: "block" }}>{region.summary}</span>
                       </span>
-                      <span className="chip">{t(lang, "inspect")}</span>
+                      <span className="chip amber">{t(lang, "inspect")}</span>
                     </button>
                   ))}
                 </div>
@@ -647,7 +701,7 @@ export function Workspace({ runId }: { runId: string }) {
                           <strong>{record.label}</strong>
                           <span style={{ display: "block" }}>{record.detail}</span>
                         </span>
-                        <span className="chip">{record.obtained ? "✓" : t(lang, "available")}</span>
+                        <span className={record.obtained ? "chip" : "chip amber"}>{record.obtained ? "✓" : t(lang, "available")}</span>
                       </button>
                     ))}
                   </div>
@@ -783,8 +837,9 @@ export function Workspace({ runId }: { runId: string }) {
               <button className="btn icon-only" type="button" onClick={() => void toggleRecord()} aria-pressed={recording === "recording"} aria-label={t(lang, "recordVoice")}>
                 <Mic {...iconProps} />
               </button>
-              <button className="btn solid" type="submit" aria-label={t(lang, "send")}>
-                <Send {...iconProps} /> {recording === "review" ? t(lang, "useTranscript") : t(lang, "send")}
+              <button className="btn solid" type="submit" aria-label={t(lang, "send")} disabled={submitting}>
+                <Send {...iconProps} />
+                <span className="label-full">{recording === "review" ? t(lang, "useTranscript") : t(lang, "send")}</span>
               </button>
             </form>
           </section>
@@ -793,13 +848,22 @@ export function Workspace({ runId }: { runId: string }) {
         {dest === "evidence" ? (
           <section>
             <div className="evidence-toolbar">
-              <button className="btn solid" type="button" onClick={() => setEvidenceTool("list")} aria-pressed={evidenceTool === "list"}>
+              <button
+                className="btn solid"
+                type="button"
+                onClick={() => {
+                  setEvidenceTool("list");
+                  setCompare(null);
+                  setToolsOpen(false);
+                }}
+                aria-pressed={evidenceTool === "list" && !compare}
+              >
                 <BookOpen {...iconProps} /> {t(lang, "evidence")}
               </button>
               <button
                 className="btn"
                 type="button"
-                disabled={compareIds.length < 2}
+                disabled={compareIds.length < 2 || submitting}
                 onClick={() => {
                   void post({ type: "compare", ids: compareIds });
                   if (tutorial === "compare") advanceTutorial("done");
@@ -808,61 +872,91 @@ export function Workspace({ runId }: { runId: string }) {
                 <GitCompareArrows {...iconProps} /> {t(lang, "compare")}
                 {compareIds.length ? ` (${compareIds.length})` : ""}
               </button>
-              <button className="btn" type="button" onClick={() => setEvidenceTool("timeline")} aria-pressed={evidenceTool === "timeline"}>
-                {t(lang, "timeline")}
-              </button>
-              <button className="btn" type="button" onClick={() => setEvidenceTool("board")} aria-pressed={evidenceTool === "board"}>
-                <Link2 {...iconProps} /> {t(lang, "board")}
-              </button>
+              <div className="tools-menu">
+                <button
+                  className="btn ghost"
+                  type="button"
+                  aria-expanded={toolsOpen}
+                  aria-pressed={evidenceTool === "timeline" || evidenceTool === "board"}
+                  onClick={() => setToolsOpen((value) => !value)}
+                >
+                  <Link2 {...iconProps} /> {t(lang, "moreTools")}
+                </button>
+                {toolsOpen ? (
+                  <div className="tools-panel" role="menu">
+                    <button
+                      className="btn"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEvidenceTool("timeline");
+                        setEvidenceId(null);
+                        setCompare(null);
+                        setToolsOpen(false);
+                      }}
+                    >
+                      {t(lang, "timeline")}
+                    </button>
+                    <button
+                      className="btn"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEvidenceTool("board");
+                        setEvidenceId(null);
+                        setCompare(null);
+                        setToolsOpen(false);
+                      }}
+                    >
+                      {t(lang, "board")}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               {compareIds.length ? (
-                <button className="text-btn" type="button" onClick={() => setCompareIds([])}>{t(lang, "cancel")}</button>
+                <button className="btn ghost" type="button" onClick={() => setCompareIds([])}>{t(lang, "cancel")}</button>
               ) : null}
             </div>
-
             {evidenceTool === "list" && !evidenceId && !compare ? (
               run.evidence.length ? (
                 <div className="evidence-grid">
                   {run.evidence.map((item) => (
-                    <button
+                    <article
                       key={item.id}
-                      type="button"
                       className="ev-card"
-                      aria-pressed={compareIds.includes(item.id)}
-                      onClick={() => openEvidence(item.id)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setCompareIds((ids) => (ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id].slice(-4)));
-                      }}
+                      data-selected={compareIds.includes(item.id) ? "true" : undefined}
                     >
-                      <span className="ev-type">
-                        <EvidenceTypeIcon type={item.type} />
-                        {item.type}
-                        {compareIds.includes(item.id) ? <span className="status-dot" /> : null}
-                      </span>
-                      <h3>{item.title}</h3>
-                      <p className="quiet">{item.source}</p>
-                      <p className="quiet">{item.when || "—"}</p>
-                      <div className="actions" style={{ marginTop: "0.35rem" }}>
-                        <span
-                          className="chip"
-                          role="button"
-                          tabIndex={0}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setCompareIds((ids) => (ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id].slice(-4)));
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setCompareIds((ids) => (ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id].slice(-4)));
-                            }
-                          }}
-                        >
-                          {t(lang, "compare")}
+                      <button
+                        type="button"
+                        className="text-btn"
+                        style={{ display: "grid", gap: "0.35rem", padding: 0, minHeight: 0, textAlign: "left", width: "100%" }}
+                        onClick={() => openEvidence(item.id)}
+                      >
+                        <span className="ev-type">
+                          <EvidenceTypeIcon type={item.type} />
+                          {item.type}
+                          {compareIds.includes(item.id) ? <span className="status-dot" aria-hidden="true" /> : null}
                         </span>
+                        <h3>{item.title}</h3>
+                        <p className="quiet">{item.source}</p>
+                        <p className="quiet">{item.when || "—"}</p>
+                      </button>
+                      <div className="actions" style={{ marginTop: "0.35rem" }}>
+                        <button
+                          type="button"
+                          className={compareIds.includes(item.id) ? "chip amber" : "chip action"}
+                          aria-pressed={compareIds.includes(item.id)}
+                          onClick={() =>
+                            setCompareIds((ids) =>
+                              ids.includes(item.id) ? ids.filter((id) => id !== item.id) : [...ids, item.id].slice(-4),
+                            )
+                          }
+                        >
+                          {compareIds.includes(item.id) ? "✓ " : ""}
+                          {t(lang, "compare")}
+                        </button>
                       </div>
-                    </button>
+                    </article>
                   ))}
                 </div>
               ) : (
@@ -897,33 +991,47 @@ export function Workspace({ runId }: { runId: string }) {
 
             {(evidenceTool === "compare" || compare) && compare ? (
               <section>
+                <button
+                  className="btn ghost"
+                  type="button"
+                  onClick={() => {
+                    setCompare(null);
+                    setEvidenceTool("list");
+                  }}
+                >
+                  <ChevronLeft {...iconProps} /> {t(lang, "evidence")}
+                </button>
                 <p className="kicker">{t(lang, "assistance")}</p>
                 <p className="quiet">{compare.disclaimer}</p>
                 <div className="compare-pane">
                   {compare.items.map((item) => (
                     <article key={item.id}>
                       <h3 style={{ fontFamily: "var(--serif)", margin: "0 0 0.35rem" }}>{item.title}</h3>
-                      <p className="quiet" style={{ color: "#5c564c" }}>{item.source}</p>
+                      <p className="quiet" style={{ color: "var(--paper-muted)" }}>{item.source}</p>
                       <pre>{item.body}</pre>
                     </article>
                   ))}
                 </div>
                 <ul>{compare.observations.map((line) => <li key={line}>{line}</li>)}</ul>
                 <div className="actions">
-                  <button className="btn" type="button" onClick={() => setCard({ claimAId: compare.items[0]?.id ?? "", claimBId: compare.items[1]?.id ?? "", explanation: "", state: "suspected" })}>
+                  <button className="btn solid" type="button" onClick={() => setCard({ claimAId: compare.items[0]?.id ?? "", claimBId: compare.items[1]?.id ?? "", explanation: "", state: "suspected" })}>
                     {t(lang, "contradiction")}
                   </button>
-                  <button className="btn" type="button" onClick={() => setCompare(null)}>{t(lang, "cancel")}</button>
+                  <button className="btn" type="button" onClick={() => { setCompare(null); setEvidenceTool("list"); }}>{t(lang, "cancel")}</button>
                 </div>
               </section>
             ) : null}
 
-            {evidenceTool === "list" && !evidenceId && !compare && compareIds.length > 0 && compareIds.length < 2 ? (
-              <p className="quiet">{t(lang, "selectTwo")}</p>
+            {evidenceTool === "list" && !evidenceId && !compare && compareIds.length === 1 ? (
+              <p className="quiet" role="status">{t(lang, "selectTwo")}</p>
             ) : null}
 
             {evidenceTool === "timeline" ? (
               <section>
+                <button className="btn ghost" type="button" onClick={() => setEvidenceTool("list")}>
+                  <ChevronLeft {...iconProps} /> {t(lang, "evidence")}
+                </button>
+                <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>{t(lang, "timeline")}</h2>
                 <label>
                   {t(lang, "people")}
                   <select className="field" value={filterPerson} onChange={(event) => setFilterPerson(event.target.value)}>
@@ -985,6 +1093,10 @@ export function Workspace({ runId }: { runId: string }) {
 
             {evidenceTool === "board" ? (
               <section>
+                <button className="btn ghost" type="button" onClick={() => setEvidenceTool("list")}>
+                  <ChevronLeft {...iconProps} /> {t(lang, "evidence")}
+                </button>
+                <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>{t(lang, "board")}</h2>
                 <div className="actions">
                   <button className="btn" type="button" aria-pressed={boardMode === "list"} onClick={() => setBoardMode("list")}>{t(lang, "listView")}</button>
                   <button className="btn" type="button" aria-pressed={boardMode === "graph"} onClick={() => setBoardMode("graph")}>{t(lang, "graphView")}</button>
@@ -1052,7 +1164,7 @@ export function Workspace({ runId }: { runId: string }) {
               </section>
             ) : null}
 
-            {card.claimAId ? (
+            {card.claimAId && (compare || evidenceTool === "compare") ? (
               <form
                 className="paper doc"
                 onSubmit={(event) => {
@@ -1092,7 +1204,7 @@ export function Workspace({ runId }: { runId: string }) {
               </form>
             ) : null}
 
-            {run.contradictions.length ? (
+            {run.contradictions.length && (evidenceTool === "board" || compare) ? (
               <section style={{ marginTop: "1rem" }}>
                 <h2 style={{ fontSize: "0.72rem", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)" }}>{t(lang, "contradiction")}</h2>
                 {run.contradictions.map((item) => {
@@ -1103,7 +1215,7 @@ export function Workspace({ runId }: { runId: string }) {
                       <p>{a} / {b}</p>
                       <p className="mine">{item.explanation}</p>
                       <p className="quiet">{item.state}</p>
-                      <button className="text-btn" type="button" onClick={() => post({ type: "contradiction_delete", id: item.id })}>{lang === "hy" ? "Ջնջել" : "Delete"}</button>
+                      <button className="btn ghost" type="button" onClick={() => post({ type: "contradiction_delete", id: item.id })}>{lang === "hy" ? "Ջնջել" : "Delete"}</button>
                     </article>
                   );
                 })}
@@ -1118,17 +1230,21 @@ export function Workspace({ runId }: { runId: string }) {
               <button className="btn solid" type="button" onClick={() => startNote({})}>
                 <NotebookPen {...iconProps} /> {t(lang, "freeNote")}
               </button>
-              <label className="sr" htmlFor="note-search">{t(lang, "search")}</label>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
-                <Search {...iconProps} size={16} />
-                <input id="note-search" className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t(lang, "search")} />
-              </span>
-              <select className="field" value={filterPerson} onChange={(event) => setFilterPerson(event.target.value)} aria-label={t(lang, "people")} style={{ maxWidth: "10rem" }}>
-                <option value="all">{t(lang, "filterAll")}</option>
-                {run.characters.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
+              {((run.notes?.length ?? 0) > 3 || query || filterPerson !== "all") ? (
+                <>
+                  <label className="sr" htmlFor="note-search">{t(lang, "search")}</label>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", flex: 1, minWidth: 0, maxWidth: "100%" }}>
+                    <Search {...iconProps} size={16} />
+                    <input id="note-search" className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t(lang, "search")} />
+                  </span>
+                  <select className="field" value={filterPerson} onChange={(event) => setFilterPerson(event.target.value)} aria-label={t(lang, "people")} style={{ maxWidth: "10rem" }}>
+                    <option value="all">{t(lang, "filterAll")}</option>
+                    {run.characters.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
             {!notes.length && !note ? (
               <div className="empty-state">
@@ -1156,18 +1272,18 @@ export function Workspace({ runId }: { runId: string }) {
                       {item.quote ? <blockquote>{item.quote}</blockquote> : null}
                       {item.body ? <p className="mine">{item.body}</p> : null}
                       <div className="actions">
-                        <button className="text-btn" type="button" onClick={() => setNote(item)}>{lang === "hy" ? "Խմբագրել" : "Edit"}</button>
+                        <button className="btn ghost" type="button" onClick={() => setNote(item)}>{lang === "hy" ? "Խմբագրել" : "Edit"}</button>
                         <button
-                          className="text-btn"
+                          className="btn ghost"
                           type="button"
                           onClick={() => post({ type: "note_save", note: { ...item, pinned: !item.pinned } })}
                         >
                           {t(lang, "pin")}
                         </button>
                         {item.sourceType === "evidence" && item.sourceId ? (
-                          <button className="text-btn" type="button" onClick={() => openEvidence(item.sourceId!)}>{t(lang, "openSource")}</button>
+                          <button className="btn ghost" type="button" onClick={() => openEvidence(item.sourceId!)}>{t(lang, "openSource")}</button>
                         ) : null}
-                        <button className="text-btn" type="button" onClick={() => post({ type: "note_delete", id: item.id })}>{lang === "hy" ? "Ջնջել" : "Delete"}</button>
+                        <button className="btn ghost" type="button" onClick={() => post({ type: "note_delete", id: item.id })}>{lang === "hy" ? "Ջնջել" : "Delete"}</button>
                       </div>
                     </article>
                   );
@@ -1328,9 +1444,9 @@ export function Workspace({ runId }: { runId: string }) {
                   ) : null}
                   <div className="actions">
                     {solveStep > 0 ? (
-                      <button className="btn" type="button" onClick={() => setSolveStep((value) => value - 1)}>{t(lang, "cancel")}</button>
+                      <button className="btn" type="button" onClick={() => setSolveStep((value) => value - 1)}>{t(lang, "stepBack")}</button>
                     ) : null}
-                    <button className="btn solid" type="submit">
+                    <button className="btn solid" type="submit" disabled={submitting}>
                       {solveStep < 3 ? (lang === "hy" ? "Հաջորդ" : "Next") : t(lang, "fileReport")}
                     </button>
                   </div>
@@ -1364,11 +1480,27 @@ export function Workspace({ runId }: { runId: string }) {
         <Lightbulb {...iconProps} />
       </button>
 
-      {guided && tipText && tutorial !== "done" ? (
+      {guided && tipRelevant ? (
         <div className="tip" role="status">
           <p>{tipText}</p>
           <div className="actions" style={{ marginTop: 0 }}>
-            <button className="btn solid" type="button" onClick={() => advanceTutorial(tutorial === "compare" ? "done" : tutorial === "evidence" ? "compare" : tutorial === "save" ? "evidence" : tutorial === "ask" ? "save" : "ask")}>
+            <button
+              className="btn solid"
+              type="button"
+              onClick={() =>
+                advanceTutorial(
+                  tutorial === "compare"
+                    ? "done"
+                    : tutorial === "evidence"
+                      ? "compare"
+                      : tutorial === "save"
+                        ? "evidence"
+                        : tutorial === "ask"
+                          ? "save"
+                          : "ask",
+                )
+              }
+            >
               {t(lang, "dismiss")}
             </button>
             <button className="btn" type="button" onClick={() => setTutorial("done")}>{t(lang, "skipTutorial")}</button>
@@ -1376,114 +1508,110 @@ export function Workspace({ runId }: { runId: string }) {
         </div>
       ) : null}
 
-      {helpOpen ? (
-        <div className="modal-back" role="presentation" onClick={() => setHelpOpen(false)}>
-          <div className="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 id="help-title" style={{ margin: 0, fontFamily: "var(--serif)", fontWeight: 500 }}>{t(lang, "help")}</h2>
-              <button className="btn icon-only" type="button" aria-label={t(lang, "cancel")} onClick={() => setHelpOpen(false)}>
-                <X {...iconProps} />
-              </button>
-            </div>
-            <p><strong>{t(lang, "main")}:</strong> {run.objectives.main}</p>
-            {leads.length || run.firstLead ? (
-              <p><strong>{t(lang, "lead")}:</strong> {(leads[0] || run.firstLead)}</p>
-            ) : (
-              <p className="quiet">{t(lang, "exhausted")}</p>
-            )}
-            <p className="quiet">{t(lang, "helpObjective")}</p>
-            <p className="quiet">{t(lang, "helpLeads")}</p>
-            <p>
-              {dest === "investigate"
-                ? t(lang, "helpToolInvestigate")
-                : dest === "evidence"
-                  ? t(lang, "helpToolEvidence")
-                  : dest === "notebook"
-                    ? t(lang, "helpToolNotebook")
-                    : t(lang, "helpToolSolve")}
-            </p>
-            <div className="actions">
-              <button className="btn" type="button" onClick={() => setGuided((value) => !value)}>
-                {guided ? t(lang, "lessGuided") : t(lang, "guided")}
-              </button>
-              <button className="btn" type="button" onClick={() => { setTutorial("interview"); setHelpOpen(false); }}>
-                {t(lang, "replayHelp")}
-              </button>
-            </div>
-            <h3 style={{ fontSize: "0.85rem", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)" }}>{t(lang, "puzzleHint")}</h3>
-            <p className="quiet">{t(lang, "hintCost")}</p>
-            <div className="actions">
-              {run.hintLadder.map((item) => (
-                <button
-                  key={item.level}
-                  className="btn"
-                  type="button"
-                  disabled={!item.available || item.taken}
-                  onClick={() => {
-                    setHelpOpen(false);
-                    void post({ type: "hint_preview", level: item.level });
-                  }}
-                >
-                  {item.level}. {item.taken ? "✓" : `−${item.cost}`}
-                </button>
-              ))}
-            </div>
-            {run.hints.map((item) => (
-              <p key={item.level}>{item.text}</p>
-            ))}
-            {run.objectives.optional ? (
-              <p className="quiet"><strong>{t(lang, "optional")}:</strong> {run.objectives.optional}</p>
-            ) : null}
-          </div>
+      <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title={t(lang, "help")} sheet>
+        <p><strong>{t(lang, "main")}:</strong> {run.objectives.main}</p>
+        {leads.length || run.firstLead ? (
+          <p><strong>{t(lang, "lead")}:</strong> {(leads[0] || run.firstLead)}</p>
+        ) : (
+          <p className="quiet">{t(lang, "exhausted")}</p>
+        )}
+        <p className="quiet">{t(lang, "helpObjective")}</p>
+        <p className="quiet">{t(lang, "helpLeads")}</p>
+        <p>
+          {dest === "investigate"
+            ? t(lang, "helpToolInvestigate")
+            : dest === "evidence"
+              ? t(lang, "helpToolEvidence")
+              : dest === "notebook"
+                ? t(lang, "helpToolNotebook")
+                : t(lang, "helpToolSolve")}
+        </p>
+        <div className="actions">
+          <button className="btn" type="button" onClick={() => setGuided((value) => !value)}>
+            {guided ? t(lang, "lessGuided") : t(lang, "guided")}
+          </button>
+          <button className="btn" type="button" onClick={() => { setTutorial("interview"); setHelpOpen(false); }}>
+            {t(lang, "replayHelp")}
+          </button>
         </div>
-      ) : null}
+        <h3 style={{ fontSize: "0.85rem", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)" }}>{t(lang, "puzzleHint")}</h3>
+        <p className="quiet">{t(lang, "hintCost")}</p>
+        <div className="actions">
+          {run.hintLadder.map((item) => (
+            <button
+              key={item.level}
+              className="btn"
+              type="button"
+              disabled={!item.available || item.taken || submitting}
+              onClick={() => {
+                setHelpOpen(false);
+                void post({ type: "hint_preview", level: item.level });
+              }}
+            >
+              {item.level}. {item.taken ? "✓" : `−${item.cost}`}
+            </button>
+          ))}
+        </div>
+        {run.hints.map((item) => (
+          <p key={item.level}>{item.text}</p>
+        ))}
+        {run.objectives.optional ? (
+          <p className="quiet"><strong>{t(lang, "optional")}:</strong> {run.objectives.optional}</p>
+        ) : null}
+      </Modal>
 
-      {confirm ? (
-        <div className="modal-back center" role="presentation">
-          <div className="modal paper" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-            <h2 id="confirm-title">{lang === "hy" ? "Հաստատել" : "Confirm"}</h2>
-            <p>{confirm.body}</p>
-            <div className="actions">
-              <button
-                className="btn solid"
-                type="button"
-                onClick={() => {
-                  const action = confirm.action;
-                  setConfirm(null);
-                  void post(action);
-                }}
-              >
-                {lang === "hy" ? "Շարունակել" : "Continue"}
-              </button>
-              <button className="btn" type="button" onClick={() => setConfirm(null)}>{t(lang, "cancel")}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <Modal
+        open={Boolean(confirm)}
+        onClose={() => setConfirm(null)}
+        title={lang === "hy" ? "Հաստատել" : "Confirm"}
+        footer={
+          <>
+            <button
+              className="btn solid"
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                if (!confirm) return;
+                const action = confirm.action;
+                setConfirm(null);
+                void post(action);
+              }}
+            >
+              {lang === "hy" ? "Շարունակել" : "Continue"}
+            </button>
+            <button className="btn" type="button" onClick={() => setConfirm(null)}>{t(lang, "cancel")}</button>
+          </>
+        }
+      >
+        <p>{confirm?.body}</p>
+      </Modal>
 
-      {hint ? (
-        <div className="modal-back center" role="presentation">
-          <div className="modal paper" role="dialog" aria-modal="true">
-            <h2>{t(lang, "hints")} {hint.level}</h2>
-            <p>{hint.warning}</p>
-            <p className="quiet">{t(lang, "hintCost")} (−{hint.cost})</p>
-            <div className="actions">
-              <button
-                className="btn solid"
-                type="button"
-                onClick={() => {
-                  const level = hint.level;
-                  setHint(null);
-                  void post({ type: "hint_take", level, confirm: true });
-                }}
-              >
-                {t(lang, "takeHint")}
-              </button>
-              <button className="btn" type="button" onClick={() => setHint(null)}>{t(lang, "cancel")}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <Modal
+        open={Boolean(hint)}
+        onClose={() => setHint(null)}
+        title={`${t(lang, "hints")} ${hint?.level ?? ""}`}
+        footer={
+          <>
+            <button
+              className="btn solid"
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                if (!hint) return;
+                const level = hint.level;
+                setHint(null);
+                void post({ type: "hint_take", level, confirm: true });
+              }}
+            >
+              {t(lang, "takeHint")}
+            </button>
+            <button className="btn" type="button" onClick={() => setHint(null)}>{t(lang, "cancel")}</button>
+          </>
+        }
+      >
+        <p>{hint?.warning}</p>
+        <p className="quiet">{t(lang, "hintCost")} (−{hint?.cost})</p>
+      </Modal>
     </div>
   );
 }

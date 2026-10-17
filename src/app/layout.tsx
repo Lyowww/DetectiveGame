@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Noto_Sans, Noto_Sans_Armenian, Noto_Serif, Noto_Serif_Armenian } from "next/font/google";
 import { PreferenceBoot } from "@/components/preference-boot";
 import { TelegramBoot } from "@/components/telegram-boot";
+import { ViewportBoot } from "@/components/ui/viewport-boot";
 import "./globals.css";
 
 const sans = Noto_Sans({
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
         <a className="skip" href="#main">Skip to content</a>
         <PreferenceBoot />
+        <ViewportBoot />
         <TelegramBoot />
         {children}
       </body>
